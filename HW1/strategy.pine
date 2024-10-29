@@ -1,0 +1,94 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © farzanmosayyebi
+//@version=5
+strategy("TA_HW1", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+
+start = input.time(title = "start", defval = timestamp("2023-01-01 00:00:00") )
+three_months_ms = 91.32 * 24 * 60 * 60 * 1000
+end = start + three_months_ms
+
+maLength1 = input.int(title="ma #1 Length", defval=12)
+maLength2 = input.int(title="ma #2 Length", defval=26)
+confirmationDelay = 5
+
+var green1 = #26A69A
+var green2 = #B2DFDB
+var red1 = #FF5252
+var red2 = #FFCDD2
+
+ma1 = ta.ema(close, maLength1)
+ma2 = ta.ema(close, maLength2)
+
+[macdLine, signalLine, histogramLine] = ta.macd(close, 12, 26, 9)
+delta = macdLine - signalLine
+absDelta = math.abs(delta)
+
+previousDelta = delta[1]
+
+bool signalCrossover = ta.crossover(macdLine, signalLine)
+bool signalCrossunder = ta.crossunder(macdLine, signalLine)
+
+bool crossOver = ta.crossover(ma1, ma2)
+bool crossUnder = ta.crossunder(ma1, ma2)
+bool cross = crossOver or crossUnder
+
+float crossPrice = cross ? close : na
+
+bool highestPrice = crossOver
+for i = 1 to 10
+    if crossPrice <= close[i]
+        highestPrice := false
+        break
+
+bool lowestPrice = crossUnder
+for i = 1 to 10
+    if crossPrice >= close[i]
+        lowestPrice := false
+        break
+
+bool interval = time >= start and time <= end
+
+bgcolor(interval ? color.rgb(81, 84, 90, 60) : na)
+
+qty = math.floor(strategy.equity / close)
+
+plot(ma1, color=color.blue, title="ma 1")
+plot(ma2, color=color.red, title="ma 2")
+plot(macdLine, color=color.lime, title="macd")
+plot(signalLine, color=color.yellow, title="signal")
+plot(histogramLine, color=color.orange, title="histogram")
+
+histogramColor = delta > 0 ? (previousDelta < delta ? green1 : green2) : (previousDelta > delta ? red1 : red2)
+
+plot(
+     delta,
+     style=plot.style_columns,
+     color=histogramColor
+     )
+
+longSignalEnter = signalCrossover[confirmationDelay] and (macdLine > signalLine) and (absDelta >= 0.08) or highestPrice
+shortSignalEnter = signalCrossunder[confirmationDelay] and (macdLine < signalLine) and (absDelta >= 0.08) or lowestPrice
+
+bgcolor(interval and longSignalEnter ? color.new(color.green, 50) : na)
+bgcolor(interval and shortSignalEnter ? color.new(color.red, 50) : na)
+
+stop_loss_precent = input.float(defval = 3.0, title = "Stop loss %")
+take_profit_percent = input.float(defval = 5.0, title = "Take profit %")
+
+long_stop_loss = strategy.position_avg_price * (1 - stop_loss_precent / 100)
+long_take_profit = strategy.position_avg_price * (1 + take_profit_percent / 100)
+
+short_stop_loss = strategy.position_avg_price * (1 + stop_loss_precent / 100)
+short_take_profit = strategy.position_avg_price * (1 - take_profit_percent / 100)
+
+if interval
+
+    if longSignalEnter
+        strategy.entry("long", strategy.long, qty = qty)
+
+    if shortSignalEnter
+        strategy.entry("short", strategy.short, qty = qty)
+
+strategy.exit("Long Exit", from_entry = "long", stop = long_stop_loss, limit = long_take_profit)
+strategy.exit("Short Exit", from_entry = "short", stop = short_stop_loss, limit = short_take_profit)
